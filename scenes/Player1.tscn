@@ -1,7 +1,11 @@
-[gd_scene load_steps=4 format=2]
+[gd_scene load_steps=6 format=2]
 
-[ext_resource path="res://scenes/Player1_controller.gd" type="Script" id=1]
+[ext_resource path="res://Scripts/Player1_controller.gd" type="Script" id=1]
 [ext_resource path="res://art/colorPalette_tex_01.png" type="Texture" id=2]
+[ext_resource path="res://Scripts/Player1_Attack.gd" type="Script" id=3]
+
+[sub_resource type="RectangleShape2D" id=2]
+extents = Vector2( 18, 10 )
 
 [sub_resource type="RectangleShape2D" id=1]
 resource_local_to_scene = true
@@ -11,14 +15,26 @@ extents = Vector2( 6, 10 )
 script = ExtResource( 1 )
 _allowDoubleJump = true
 _jumpHeight = 250.0
+_dashBuffer = 15
 _acceleration = 1000.0
 _moveClamp = 150.0
 _deAcceleration = 800.0
 _fallClamp = 600.0
 _minFallSpeed = 320.0
 _maxFallSpeed = 500.0
-_dashPower = 500
-_dashLength = 2
+_dashPower = 300
+_dashLength = 12
+_dashEndHorizontalMultiplier = 0.5
+_dashEndVerticalMultiplier = 0.5
+
+[node name="Attack" type="Area2D" parent="."]
+monitoring = false
+monitorable = false
+script = ExtResource( 3 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Attack"]
+position = Vector2( 27, 0 )
+shape = SubResource( 2 )
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource( 1 )
@@ -26,3 +42,5 @@ shape = SubResource( 1 )
 [node name="Sprite" type="Sprite" parent="."]
 scale = Vector2( 1.5, 2.5 )
 texture = ExtResource( 2 )
+
+[connection signal="OnAttack" from="." to="Attack" method="_on_Player1_OnAttack"]

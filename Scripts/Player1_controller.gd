@@ -16,6 +16,7 @@ signal OnDashingChanged(state)
 var _dashing : bool
 var _dashToConsume : bool
 var _jumpToConsume : bool
+var _attackToConsume : bool
 var _coyoteUsable : bool
 
 var _executedBufferedJump : bool
@@ -24,14 +25,18 @@ var _canDash : bool
 
 signal OnJumping()
 signal OnDoubleJumping()
+signal OnAttack()
 export var _jumpHeight = 30.0
 export var _jumpApexThreshold = 10.0
 export var _coyoteTimeThreshold = int(7)
 export var _jumpBuffer = int(7)
 export var _jumpEndEarlyGravityModifier = 3
+export var _dashBuffer = int(7)
 var _endedJumpEarly = true
 var _apexPoint : float
 var _lastJumpPressed = int(1)
+var _lastDashPressed = int(1)
+var _lastAttackPressed = int(1)
 var _fixedFrame : int
 
 func CanUseCoyote() -> bool:
@@ -43,7 +48,7 @@ func HasBufferedJump() -> bool:
 		return true
 	return false
 func CanDoubleJump() -> bool:
-	if _allowDoubleJump && _doubleJumpUsable && !_coyoteUsable:
+	if _allowDoubleJump && _doubleJumpUsable && !CanUseCoyote():
 		return true
 	return false
 
@@ -70,6 +75,7 @@ func _physics_process(delta):
 	CalculateJumpApex()
 	CalculateGravity(delta)
 	CalculateJump()
+	CalculateAttack()
 	CalculateDash()
 	MoveCharacter(delta)
 
@@ -81,9 +87,14 @@ func GatherInput():
 		Input.get_action_raw_strength("Plr1_up") - Input.get_action_raw_strength("Plr1_down"),
 		Input.is_action_just_pressed("Plr1_jump"),
 		Input.is_action_pressed("Plr1_jump"),
-		Input.is_action_just_pressed("Plr1_dash")
+		Input.is_action_just_pressed("Plr1_dash"),
+		Input.is_action_just_pressed("Plr1_attack")
 	)
+	if (Input.is_action_just_pressed("Plr1_attack")):
+		_lastAttackPressed = _fixedFrame
+		_attackToConsume = true
 	if (Input.is_action_just_pressed("Plr1_dash")):
+		_lastDashPressed = _fixedFrame
 		_dashToConsume = true
 	if (Input.is_action_just_pressed("Plr1_jump")):
 		_lastJumpPressed = _fixedFrame
@@ -95,13 +106,15 @@ class FrameInput:
 	var JumpDown : bool
 	var JumpHeld : bool
 	var DashDown : bool
+	var AttackDown : bool
 	
-	func _init(_X:float, _Y:float, _JumpDown:bool, _JumpHeld:bool, _DashDown:bool):
+	func _init(_X:float, _Y:float, _JumpDown:bool, _JumpHeld:bool, _DashDown:bool, _AttackDown:bool):
 		X = _X
 		Y = _Y
 		JumpDown = _JumpDown
 		JumpHeld = _JumpHeld
 		DashDown = _DashDown
+		AttackDown = _AttackDown
 
 class RayRange:
 	var Start : Vector2
@@ -194,7 +207,6 @@ func CalculateWalk(_delta):
 		# clamped by max free movement
 		_currentHorizSpd = clamp(_currentHorizSpd, -_moveClamp, _moveClamp)
 		
-		
 		# Apply bonus at the apex of a jump
 		var apexBonus = sign(input.X) * _apexBonus * _apexPoint
 		_currentHorizSpd += apexBonus * _delta
@@ -243,13 +255,8 @@ func CalculateJumpApex():
 		_apexPoint = 0
 
 func CalculateJump():
-	if _jumpToConsume && CanDoubleJump():
-		_currentVertiSpd = -_jumpHeight
-		_doubleJumpUsable = false
-		_endedJumpEarly = false
-		_jumpToConsume = false
-		print("jump1")
-		emit_signal("OnDoubleJumping")
+	if _dashing:
+		return
 	
 	# Jump if: grounded or withing coyote-time || sufficient jump buffer
 	if (_jumpToConsume && CanUseCoyote()) || HasBufferedJump():
@@ -259,8 +266,21 @@ func CalculateJump():
 		_jumpToConsume = false
 		_timeLeftGrounded = _fixedFrame
 		_executedBufferedJump = true
-		print("jump2")
+		print("Used jump")
 		emit_signal("OnJumping")
+		
+	# ... double jump conditions met
+	elif _jumpToConsume && CanDoubleJump():
+		_currentVertiSpd = -_jumpHeight
+		_doubleJumpUsable = false
+		_endedJumpEarly = false
+		_jumpToConsume = false
+		print("Used Doublejump")
+		emit_signal("OnDoubleJumping")
+		
+	# if not, reset _jumpToConsume
+	else:
+		_jumpToConsume = false
 	
 	# End the jump early if button released
 	if !_grounded && !input.JumpHeld && !_endedJumpEarly && _velocity.y < 0:
@@ -276,12 +296,10 @@ func CalculateJump():
 export var _dashPower = 50
 export var _dashLength = 3
 export var _dashEndHorizontalMultiplier = 0.25
+export var _dashEndVerticalMultiplier = 0.25
 var _startedDashing : float
 #var _canDash : bool
 var _dashVelo : Vector2
-
-#var _dashing : bool
-#var _dashToConsume : bool
 
 func CalculateDash():
 	if (!_allowDash): 
@@ -292,52 +310,38 @@ func CalculateDash():
 		if _grounded && input.Y < 0: 
 			vel = Vector2(input.X, 0)
 		else: 
-			vel = Vector2(input.X, input.Y)
-		if vel == Vector2.ZERO: return
-		_dashVelo = vel * _dashPower
+			vel = Vector2(input.X, -input.Y)
+		
+		if vel == Vector2.ZERO: 
+			# VOIS MENNÄ "FACING" -SUUNNAN MUKAAN JOS EI INPUTTIA! (sitten kun facing on implementoitu)
+			return
+		
+		_dashVelo = vel.normalized() * _dashPower
 		_dashing = true
 		emit_signal("OnDashingChanged", true)
 		_canDash = false
 		_startedDashing = _fixedFrame
+	elif (_lastDashPressed + _dashBuffer < _fixedFrame):
+		_dashToConsume = false
 	
 	if (_dashing):
 		_currentHorizSpd = _dashVelo.x
 		_currentVertiSpd = _dashVelo.y
+		_lastJumpPressed += 1
 		# Cancel when the time is out or we've reached our max safety distance
 		if (_startedDashing + _dashLength < _fixedFrame):
 			_dashing = false
 			emit_signal("OnDashingChanged", false)
-			_currentVertiSpd = 0
+			_currentVertiSpd *= _dashEndVerticalMultiplier
 			_currentHorizSpd *= _dashEndHorizontalMultiplier
 			if (_grounded):
 				_canDash = true
 
-		#void CalculateDash() {
-		#    if (!_allowDash) return;
-		#    if (_dashToConsume && _canDash) {
-		#        _dashToConsume = false;
-		#        var vel = new Vector2(Input.X, _grounded && Input.Y < 0 ? 0 : Input.Y);
-		#        if (vel == Vector2.zero) return;
-		#        _dashVel = vel * _dashPower;
-		#        _dashing = true;
-		#        OnDashingChanged?.Invoke(true);
-		#        _canDash = false;
-		#        _startedDashing = _fixedFrame;
-		#    }
-
-		#    if (_dashing) {
-		#        _currentHorizontalSpeed = _dashVel.x;
-		#        _currentVerticalSpeed = _dashVel.y;
-		#        // Cancel when the time is out or we've reached our max safety distance
-		#        if (_startedDashing + _dashLength < _fixedFrame) {
-		#            _dashing = false;
-		#            OnDashingChanged?.Invoke(false);
-		#            _currentVerticalSpeed = 0;
-		#            _currentHorizontalSpeed *= _dashEndHorizontalMultiplier;
-		#            if (_grounded) _canDash = true;
-		#        }
-		#    }
-		#}
+# Attack
+func CalculateAttack():
+	if (_attackToConsume):
+		_attackToConsume = false
+		emit_signal("OnAttack")
 
 # Move
 func MoveCharacter(_delta):
@@ -352,17 +356,9 @@ var _lastPosition : Vector2
 var _cornerStuck : bool
 
 func RunCornerPrevention():
-	_cornerStuck = !_grounded && _lastPosition == global_position && _lastJumpPressed + 1 < _fixedFrame
+	_cornerStuck = !_grounded && _lastPosition == self.position && _lastJumpPressed + 1 < _fixedFrame
 	if _cornerStuck:
 		print("cornerStruck")
 		_currentVertiSpd = 0
 	
-	_lastPosition = global_position
-	
-	#_cornerStuck = !_grounded && _lastPos == _rb.position && _lastJumpPressed + 1 < _fixedFrame;
-	#_currentVerticalSpeed = _cornerStuck ? 0 : _currentVerticalSpeed;
-	#_lastPos = _rb.position;
-	
-	
-	
-	
+	_lastPosition = self.position
