@@ -1,11 +1,28 @@
-[gd_scene load_steps=3 format=2]
+[gd_scene load_steps=4 format=2]
 
 [ext_resource path="res://scenes/Player1_controller.gd" type="Script" id=1]
+[ext_resource path="res://art/colorPalette_tex_01.png" type="Texture" id=2]
 
-[sub_resource type="CapsuleShape2D" id=1]
+[sub_resource type="RectangleShape2D" id=1]
+resource_local_to_scene = true
+extents = Vector2( 6, 10 )
 
-[node name="Player1" type="RigidBody2D"]
+[node name="Player1" type="KinematicBody2D"]
 script = ExtResource( 1 )
+_allowDoubleJump = true
+_jumpHeight = 250.0
+_acceleration = 1000.0
+_moveClamp = 150.0
+_deAcceleration = 800.0
+_fallClamp = 600.0
+_minFallSpeed = 320.0
+_maxFallSpeed = 500.0
+_dashPower = 500
+_dashLength = 2
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource( 1 )
+
+[node name="Sprite" type="Sprite" parent="."]
+scale = Vector2( 1.5, 2.5 )
+texture = ExtResource( 2 )
